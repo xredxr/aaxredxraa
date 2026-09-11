@@ -29,3 +29,5 @@ Output:
 ```text
 build/AWSLivenessPractice-2.0.tipa
 ```
+
+GitHub Actions also builds and uploads the TrollStore `.tipa` artifact automatically.
