@@ -23,7 +23,7 @@ new = '''- (void)beginCheck {\n    if (!self.sampleVideoMode && !self.session) {
 if old in s:
     s = s.replace(old, new, 1)
 
-# Cash-Giraffe-like visual proportions.
+# Cash Giraffe-like visual proportions.
 s = s.replace('self.promptLabel = [self labelWithText:@"Connecting..." size:18 weight:UIFontWeightSemibold color:UIColor.whiteColor];',
               'self.promptLabel = [self labelWithText:@"Connecting..." size:14 weight:UIFontWeightSemibold color:UIColor.whiteColor];')
 s = s.replace('self.promptLabel.backgroundColor = [UIColor colorWithRed:0.02 green:0.47 blue:0.52 alpha:0.93];',
@@ -36,8 +36,13 @@ s = s.replace('self.ovalLayer.lineWidth = 3.5;', 'self.ovalLayer.lineWidth = 2.0
 s = s.replace('CGFloat w = MIN(CGRectGetWidth(b) * 0.72, 330.0);', 'CGFloat w = MIN(CGRectGetWidth(b) * 0.66, 300.0);')
 s = s.replace('CGFloat h = w * 1.30;', 'CGFloat h = w * 1.34;')
 
-# Observed Cash Giraffe sequence with opaque WHITE outside the oval during
-# Hold still, colored-light challenge and Verifying.
+# v2.4 observed Cash Giraffe sequence:
+# 0 Connecting
+# 1 Wide camera / center face
+# 2 Explicit Move closer stage
+# 3 Hold still with opaque white outside oval
+# 4 Colored lights, same white mask
+# 5 Verifying, camera stays alive
 start = s.find('- (void)tick:(CADisplayLink *)link {')
 end = s.find('- (void)showResultWithTitle:', start)
 if start < 0 or end < 0:
@@ -48,31 +53,71 @@ tick = '''- (void)tick:(CADisplayLink *)link {
     if (self.sampleVideoMode) [self processCurrentSampleVideoFrame];
 
     CFTimeInterval elapsed = CACurrentMediaTime() - self.phaseStart;
-    NSString *instruction = [self faceFitInstruction];
+    CGFloat area = self.faceBox.size.width * self.faceBox.size.height;
+    CGFloat cx = CGRectGetMidX(self.faceBox);
+    CGFloat cy = CGRectGetMidY(self.faceBox);
+    BOOL centered = self.faceCount == 1 && cx > 0.38 && cx < 0.62 && cy > 0.34 && cy < 0.66;
 
     if (self.phase == 0) {
         self.countdownLabel.hidden = YES;
         self.recLabel.text = @"";
         self.flashView.alpha = 0;
-        self.dimMaskLayer.fillColor = [UIColor colorWithWhite:0 alpha:0.18].CGColor;
+        self.dimMaskLayer.fillColor = [UIColor colorWithWhite:0 alpha:0.10].CGColor;
+        self.ovalLayer.strokeColor = UIColor.clearColor.CGColor;
         [self setPrompt:@"Connecting..." detail:@"" good:NO];
-        if (elapsed >= 0.85) [self advanceToPhase:1];
+        if (elapsed >= 0.75) [self advanceToPhase:1];
     }
     else if (self.phase == 1) {
-        self.countdownLabel.hidden = YES;
+        // Brief full-camera framing step after Start Face Check.
         self.flashView.alpha = 0;
-        if (instruction) {
-            self.dimMaskLayer.fillColor = [UIColor colorWithWhite:0 alpha:0.18].CGColor;
-            [self setPrompt:instruction detail:@"" good:NO];
+        self.dimMaskLayer.fillColor = UIColor.clearColor.CGColor;
+        self.ovalLayer.strokeColor = UIColor.clearColor.CGColor;
+        if (self.faceCount == 0) {
+            [self setPrompt:@"Move face in front of camera" detail:@"" good:NO];
+            self.phaseStart = CACurrentMediaTime();
+        } else if (self.faceCount > 1) {
+            [self setPrompt:@"Only one face per check" detail:@"" good:NO];
+            self.phaseStart = CACurrentMediaTime();
+        } else if (!centered) {
+            [self setPrompt:@"Center your face" detail:@"" good:NO];
             self.phaseStart = CACurrentMediaTime();
         } else {
-            self.dimMaskLayer.fillColor = UIColor.whiteColor.CGColor;
-            self.ovalLayer.strokeColor = [UIColor colorWithWhite:0.82 alpha:1].CGColor;
-            [self setPrompt:@"Hold still" detail:@"" good:YES];
-            if (elapsed >= 0.70) [self advanceToPhase:2];
+            [self setPrompt:@"Center your face" detail:@"" good:YES];
+            if (elapsed >= 0.55) [self advanceToPhase:2];
         }
     }
     else if (self.phase == 2) {
+        // Cash Giraffe asks the user to move closer before Hold still.
+        self.flashView.alpha = 0;
+        self.dimMaskLayer.fillColor = UIColor.clearColor.CGColor;
+        self.ovalLayer.strokeColor = [UIColor colorWithWhite:0.90 alpha:1].CGColor;
+        if (self.faceCount != 1) {
+            [self setPrompt:@"Move face in front of camera" detail:@"" good:NO];
+            self.phaseStart = CACurrentMediaTime();
+        } else if (!centered) {
+            [self setPrompt:@"Center your face" detail:@"" good:NO];
+            self.phaseStart = CACurrentMediaTime();
+        } else if (area < 0.19) {
+            [self setPrompt:@"Move closer" detail:@"" good:NO];
+            self.phaseStart = CACurrentMediaTime();
+        } else if (area > 0.42) {
+            // Only use Move back for an abnormally close face.
+            [self setPrompt:@"Move back" detail:@"" good:NO];
+            self.phaseStart = CACurrentMediaTime();
+        } else {
+            [self setPrompt:@"Move closer" detail:@"" good:YES];
+            if (elapsed >= 0.45) [self advanceToPhase:3];
+        }
+    }
+    else if (self.phase == 3) {
+        self.countdownLabel.hidden = YES;
+        self.flashView.alpha = 0;
+        self.dimMaskLayer.fillColor = UIColor.whiteColor.CGColor;
+        self.ovalLayer.strokeColor = [UIColor colorWithWhite:0.82 alpha:1].CGColor;
+        [self setPrompt:@"Hold still" detail:@"" good:YES];
+        if (elapsed >= 0.90) [self advanceToPhase:4];
+    }
+    else if (self.phase == 4) {
         self.countdownLabel.hidden = YES;
         self.dimMaskLayer.fillColor = UIColor.whiteColor.CGColor;
         self.ovalLayer.strokeColor = [UIColor colorWithWhite:0.82 alpha:1].CGColor;
@@ -81,9 +126,9 @@ tick = '''- (void)tick:(CADisplayLink *)link {
         NSInteger idx = MIN((NSInteger)(elapsed / 0.50), (NSInteger)colors.count - 1);
         self.flashView.backgroundColor = colors[idx];
         self.flashView.alpha = 0.56;
-        if (elapsed >= 4.0) [self advanceToPhase:3];
+        if (elapsed >= 4.0) [self advanceToPhase:5];
     }
-    else if (self.phase == 3) {
+    else if (self.phase == 5) {
         self.countdownLabel.hidden = YES;
         self.flashView.alpha = 0;
         self.recLabel.text = @"";
@@ -108,18 +153,17 @@ tick = '''- (void)tick:(CADisplayLink *)link {
         }
     }
 
-    CGFloat area = self.faceBox.size.width * self.faceBox.size.height;
     NSString *source = self.sampleVideoMode ? @"VIDEO SAMPLE" : @"LIVE CAMERA";
-    self.diagnosticLabel.text = [NSString stringWithFormat:@"LOCAL PRACTICE | %@\\nFaces %ld | Bright %.0f | Area %.3f\\nMotion %.3f | State %ld/4", source, (long)self.faceCount, self.brightness, area, self.motionScore, (long)(self.phase+1)];
+    self.diagnosticLabel.text = [NSString stringWithFormat:@"LOCAL PRACTICE | %@\\nFaces %ld | Bright %.0f | Area %.3f\\nMotion %.3f | State %ld/6", source, (long)self.faceCount, self.brightness, area, self.motionScore, (long)(self.phase+1)];
 }
 
 '''
 s = s[:start] + tick + s[end:]
 
-s = s.replace('Version 2 mirrors the public Amplify UI Face Liveness structure more closely:',
-              'Version 2.3 follows the observed Cash Giraffe presentation more closely:')
+s = s.replace('Version 2.3 follows the observed Cash Giraffe presentation more closely:',
+              'Version 2.4 follows the observed Cash Giraffe distance sequence more closely:')
 s = s.replace('Version 2.2 follows the observed Cash Giraffe presentation more closely:',
-              'Version 2.3 follows the observed Cash Giraffe presentation more closely:')
+              'Version 2.4 follows the observed Cash Giraffe distance sequence more closely:')
 
 p.write_text(s)
-print('v2.3 white-mask patch applied')
+print('v2.4 staged distance-flow patch applied')
