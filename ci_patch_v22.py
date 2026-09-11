@@ -32,12 +32,12 @@ s = s.replace('[self.promptLabel.topAnchor constraintEqualToAnchor:overlay.safeA
               '[self.promptLabel.topAnchor constraintEqualToAnchor:overlay.safeAreaLayoutGuide.topAnchor constant:116]')
 s = s.replace('[self.promptLabel.heightAnchor constraintGreaterThanOrEqualToConstant:38]',
               '[self.promptLabel.heightAnchor constraintGreaterThanOrEqualToConstant:30]')
-s = s.replace('self.ovalLayer.lineWidth = 3.5;', 'self.ovalLayer.lineWidth = 2.2;')
+s = s.replace('self.ovalLayer.lineWidth = 3.5;', 'self.ovalLayer.lineWidth = 2.0;')
 s = s.replace('CGFloat w = MIN(CGRectGetWidth(b) * 0.72, 330.0);', 'CGFloat w = MIN(CGRectGetWidth(b) * 0.66, 300.0);')
 s = s.replace('CGFloat h = w * 1.30;', 'CGFloat h = w * 1.34;')
 
-# Observed Cash Giraffe sequence:
-# Connecting -> face fit/Hold still -> colored lights -> Verifying, keeping camera alive.
+# Observed Cash Giraffe sequence with opaque WHITE outside the oval during
+# Hold still, colored-light challenge and Verifying.
 start = s.find('- (void)tick:(CADisplayLink *)link {')
 end = s.find('- (void)showResultWithTitle:', start)
 if start < 0 or end < 0:
@@ -54,6 +54,7 @@ tick = '''- (void)tick:(CADisplayLink *)link {
         self.countdownLabel.hidden = YES;
         self.recLabel.text = @"";
         self.flashView.alpha = 0;
+        self.dimMaskLayer.fillColor = [UIColor colorWithWhite:0 alpha:0.18].CGColor;
         [self setPrompt:@"Connecting..." detail:@"" good:NO];
         if (elapsed >= 0.85) [self advanceToPhase:1];
     }
@@ -61,15 +62,20 @@ tick = '''- (void)tick:(CADisplayLink *)link {
         self.countdownLabel.hidden = YES;
         self.flashView.alpha = 0;
         if (instruction) {
+            self.dimMaskLayer.fillColor = [UIColor colorWithWhite:0 alpha:0.18].CGColor;
             [self setPrompt:instruction detail:@"" good:NO];
             self.phaseStart = CACurrentMediaTime();
         } else {
+            self.dimMaskLayer.fillColor = UIColor.whiteColor.CGColor;
+            self.ovalLayer.strokeColor = [UIColor colorWithWhite:0.82 alpha:1].CGColor;
             [self setPrompt:@"Hold still" detail:@"" good:YES];
             if (elapsed >= 0.70) [self advanceToPhase:2];
         }
     }
     else if (self.phase == 2) {
         self.countdownLabel.hidden = YES;
+        self.dimMaskLayer.fillColor = UIColor.whiteColor.CGColor;
+        self.ovalLayer.strokeColor = [UIColor colorWithWhite:0.82 alpha:1].CGColor;
         [self setPrompt:@"Hold still" detail:@"" good:YES];
         NSArray<UIColor *> *colors = [self localLightSequence];
         NSInteger idx = MIN((NSInteger)(elapsed / 0.50), (NSInteger)colors.count - 1);
@@ -81,8 +87,9 @@ tick = '''- (void)tick:(CADisplayLink *)link {
         self.countdownLabel.hidden = YES;
         self.flashView.alpha = 0;
         self.recLabel.text = @"";
+        self.dimMaskLayer.fillColor = UIColor.whiteColor.CGColor;
+        self.ovalLayer.strokeColor = [UIColor colorWithWhite:0.82 alpha:1].CGColor;
         [self setPrompt:@"Verifying" detail:@"" good:YES];
-        self.ovalLayer.strokeColor = [UIColor colorWithWhite:0.93 alpha:1].CGColor;
 
         if (elapsed >= 2.75) {
             self.running = NO;
@@ -110,7 +117,9 @@ tick = '''- (void)tick:(CADisplayLink *)link {
 s = s[:start] + tick + s[end:]
 
 s = s.replace('Version 2 mirrors the public Amplify UI Face Liveness structure more closely:',
-              'Version 2.2 follows the observed Cash Giraffe presentation more closely:')
+              'Version 2.3 follows the observed Cash Giraffe presentation more closely:')
+s = s.replace('Version 2.2 follows the observed Cash Giraffe presentation more closely:',
+              'Version 2.3 follows the observed Cash Giraffe presentation more closely:')
 
 p.write_text(s)
-print('v2.2 patch applied')
+print('v2.3 white-mask patch applied')
