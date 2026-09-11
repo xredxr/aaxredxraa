@@ -20,28 +20,33 @@ jobs:
           git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
           echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
 
-      - name: Apply v2.2 patch
+      - name: Apply v2.3 Cash Giraffe patch
         run: python3 ci_patch_v22.py
+
+      - name: Generate app icon
+        run: python3 ci_make_icon.py
 
       - name: Build TrollStore app
         shell: bash
         run: |
           chmod +x build_tipa.sh
           ./build_tipa.sh
-          cp build/AWSLivenessPractice-2.0.tipa build/AWSLivenessPractice-2.2-CashGiraffeStyle.tipa
+          cp build/AWSLivenessPractice-2.0.tipa build/LivenessLab-2.3-CashGiraffeStyle.tipa
 
       - name: Inspect output
         run: |
-          ls -lh build/AWSLivenessPractice-2.2-CashGiraffeStyle.tipa
+          ls -lh build/LivenessLab-2.3-CashGiraffeStyle.tipa
           rm -rf /tmp/awsinspect && mkdir /tmp/awsinspect
           cd /tmp/awsinspect
-          unzip -q "$GITHUB_WORKSPACE/build/AWSLivenessPractice-2.2-CashGiraffeStyle.tipa"
+          unzip -q "$GITHUB_WORKSPACE/build/LivenessLab-2.3-CashGiraffeStyle.tipa"
           file Payload/AWSLivenessPractice.app/AWSLivenessPractice
           /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' Payload/AWSLivenessPractice.app/Info.plist
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' Payload/AWSLivenessPractice.app/Info.plist
+          ls -lh Payload/AWSLivenessPractice.app/Icon60@2x.png Payload/AWSLivenessPractice.app/Icon60@3x.png Payload/AWSLivenessPractice.app/AppIcon.png
 
       - name: Upload TIPA
         uses: actions/upload-artifact@v4
         with:
-          name: AWSLivenessPractice-2.2-CashGiraffeStyle-TrollStore
-          path: build/AWSLivenessPractice-2.2-CashGiraffeStyle.tipa
+          name: LivenessLab-2.3-CashGiraffeStyle-TrollStore
+          path: build/LivenessLab-2.3-CashGiraffeStyle.tipa
           if-no-files-found: error
