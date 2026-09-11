@@ -21,19 +21,45 @@ jobs:
           git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
           echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
 
-      - name: Patch CI source typo
+      - name: Patch crash-safe build
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
+
+          # Compile only arm64. This avoids selecting an arm64e slice built
+          # by a newer Xcode on older TrollStore/iOS 16 devices.
+          mk = Path('Makefile')
+          s = mk.read_text()
+          s = s.replace('ARCHS = arm64 arm64e', 'ARCHS = arm64')
+          s = s.replace('ARCHS = arm64e arm64', 'ARCHS = arm64')
+          mk.write_text(s)
+
           p = Path('Sources/AWSLivenessViewController.m')
           s = p.read_text()
+
+          # Fix source typo found by CI.
           s = s.replace('[sourceLabel.leadingAnchor', '[self.sourceLabel.leadingAnchor')
           s = s.replace('[sourceLabel.trailingAnchor', '[self.sourceLabel.trailingAnchor')
           s = s.replace('[sourceLabel.topAnchor', '[self.sourceLabel.topAnchor')
           s = s.replace('sourceLabel.bottomAnchor', 'self.sourceLabel.bottomAnchor')
+
+          # Do not touch AVFoundation/TCC while the root controller is still
+          # being constructed. Request/prepare the camera only after Start.
+          s = s.replace('    [self requestCameraAndPrepare];\n    [self showStartScreen];', '    [self showStartScreen];')
+
+          old = '''- (void)beginCheck {\n    self.savedBrightness = UIScreen.mainScreen.brightness;'''
+          new = '''- (void)beginCheck {\n    if (!self.sampleVideoMode && !self.session) {\n        AVAuthorizationStatus status = [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeVideo];\n        if (status == AVAuthorizationStatusNotDetermined) {\n            [AVCaptureDevice requestAccessForMediaType:AVMediaTypeVideo completionHandler:^(BOOL granted) {\n                dispatch_async(dispatch_get_main_queue(), ^{\n                    if (granted) { [self prepareCamera]; [self beginCheck]; }\n                    else { [self showResultWithTitle:@\"Camera permission required\" detail:@\"Allow camera access in Settings, or choose a local sample video.\" success:NO]; }\n                });\n            }];\n            return;\n        }\n        if (status != AVAuthorizationStatusAuthorized) {\n            [self showResultWithTitle:@\"Camera permission required\" detail:@\"Allow camera access in Settings, or choose a local sample video.\" success:NO];\n            return;\n        }\n        [self prepareCamera];\n    }\n    self.savedBrightness = UIScreen.mainScreen.brightness;'''
+          if old not in s:
+              raise SystemExit('Could not locate beginCheck for crash-safe patch')
+          s = s.replace(old, new, 1)
           p.write_text(s)
           PY
+
+          echo 'Patched architecture:'
+          grep '^ARCHS' Makefile || true
+          echo 'Startup camera calls:'
+          grep -n 'requestCameraAndPrepare' Sources/AWSLivenessViewController.m || true
 
       - name: Build TrollStore app
         shell: bash
@@ -44,11 +70,15 @@ jobs:
       - name: Inspect output
         run: |
           ls -lh build/*.tipa
-          unzip -l build/AWSLivenessPractice-2.0.tipa | head -80
+          rm -rf /tmp/awsinspect && mkdir /tmp/awsinspect
+          cd /tmp/awsinspect
+          unzip -q "$GITHUB_WORKSPACE/build/AWSLivenessPractice-2.0.tipa"
+          file Payload/AWSLivenessPractice.app/AWSLivenessPractice
+          /usr/libexec/PlistBuddy -c 'Print :MinimumOSVersion' Payload/AWSLivenessPractice.app/Info.plist
 
       - name: Upload TIPA
         uses: actions/upload-artifact@v4
         with:
-          name: AWSLivenessPractice-2.0-TrollStore
+          name: AWSLivenessPractice-2.1-CrashSafe-TrollStore
           path: build/AWSLivenessPractice-2.0.tipa
           if-no-files-found: error
