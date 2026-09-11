@@ -21,6 +21,20 @@ jobs:
           git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
           echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
 
+      - name: Patch CI source typo
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Sources/AWSLivenessViewController.m')
+          s = p.read_text()
+          s = s.replace('[sourceLabel.leadingAnchor', '[self.sourceLabel.leadingAnchor')
+          s = s.replace('[sourceLabel.trailingAnchor', '[self.sourceLabel.trailingAnchor')
+          s = s.replace('[sourceLabel.topAnchor', '[self.sourceLabel.topAnchor')
+          s = s.replace('sourceLabel.bottomAnchor', 'self.sourceLabel.bottomAnchor')
+          p.write_text(s)
+          PY
+
       - name: Build TrollStore app
         shell: bash
         run: |
