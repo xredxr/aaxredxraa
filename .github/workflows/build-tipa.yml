@@ -1,0 +1,40 @@
+name: Build AWS Liveness Practice TIPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["master", "main"]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Theos prerequisites
+        run: |
+          brew install ldid xz
+
+      - name: Install Theos
+        run: |
+          git clone --recursive https://github.com/theos/theos.git "$HOME/theos"
+          echo "THEOS=$HOME/theos" >> "$GITHUB_ENV"
+
+      - name: Build TrollStore app
+        shell: bash
+        run: |
+          chmod +x build_tipa.sh
+          ./build_tipa.sh
+
+      - name: Inspect output
+        run: |
+          ls -lh build/*.tipa
+          unzip -l build/AWSLivenessPractice-2.0.tipa | head -80
+
+      - name: Upload TIPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: AWSLivenessPractice-2.0-TrollStore
+          path: build/AWSLivenessPractice-2.0.tipa
+          if-no-files-found: error
